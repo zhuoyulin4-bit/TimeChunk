@@ -396,7 +396,7 @@ const SettingsModal = ({
 
 const TimeTracker = () => {
   // --- State ---
-  const [mode, setMode] = useState('focus'); // 'focus' | 'countup' | 'record'
+  const [mode, setMode] = useState('record'); // 'record' | 'focus' | 'countup'
   const [intervalTime, setIntervalTime] = useState(30); // 分钟 (Focus mode)
   const [recordInterval, setRecordInterval] = useState(30); // 分钟 (Record mode)
   const [timeLeft, setTimeLeft] = useState(intervalTime * 60);
@@ -709,9 +709,9 @@ const TimeTracker = () => {
       {/* Mode Switcher */}
       <div className="relative z-20 mt-36 mb-8 bg-white/50 p-1 rounded-2xl flex soft-shadow-in mx-auto max-w-xs w-full">
         {[
-          { id: 'focus', label: '专注', icon: <Timer size={16} /> },
-          { id: 'countup', label: '正计时', icon: <Play size={16} /> },
           { id: 'record', label: '记录', icon: <ClipboardList size={16} /> },
+          { id: 'focus', label: '倒计时', icon: <Timer size={16} /> },
+          { id: 'countup', label: '正计时', icon: <Play size={16} /> },
         ].map((m) => (
           <button
             key={m.id}
@@ -744,7 +744,7 @@ const TimeTracker = () => {
                     {formatTime(timeLeft)}
                   </div>
                   <div className="text-slate-400 font-bold mt-4 uppercase tracking-[0.2em] text-xs">
-                    {isRunning ? '专注中' : '准备就绪'}
+                    {isRunning ? '倒计时中' : '准备就绪'}
                   </div>
                 </div>
               </RingProgress>
@@ -768,7 +768,7 @@ const TimeTracker = () => {
                   <button onClick={handleManualEnd} className="text-xs font-bold text-slate-400 hover:text-red-500 tracking-widest transition-colors px-6 py-2 rounded-full hover:bg-red-50">
                     提前结束并记录
                   </button>
-                ) : <p className="text-slate-300 text-xs font-bold tracking-widest uppercase">点击开始专注</p>}
+                ) : <p className="text-slate-300 text-xs font-bold tracking-widest uppercase">点击开始倒计时</p>}
               </div>
             </div>
           </div>
