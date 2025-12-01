@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Settings, BarChart2, Download, Trash2, X, Clock, Plus } from 'lucide-react';
-import { isSameDay, format } from 'date-fns';
+import { Play, Pause, Settings, BarChart2, Download, Trash2, X, Clock, Plus, Timer, ClipboardList, Bell, RotateCcw } from 'lucide-react';
+import { isSameDay, format, differenceInMinutes, setHours, setMinutes } from 'date-fns';
 
 // --- 默认配置 ---
 const DEFAULT_CATEGORIES = [
@@ -67,30 +67,80 @@ const RingProgress = ({ radius, stroke, progress, children }) => {
   );
 };
 
-const LogModal = ({ note, setNote, saveLog, setShowLogModal }) => {
+const LogModal = ({ note, setNote, saveLog, setShowLogModal, initialStartTime, initialEndTime, isManual }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [customLabel, setCustomLabel] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+  
+  // Manual Time Entry State
+  const [startTimeStr, setStartTimeStr] = useState(initialStartTime ? format(initialStartTime, 'HH:mm') : format(new Date(), 'HH:mm'));
+  const [endTimeStr, setEndTimeStr] = useState(initialEndTime ? format(initialEndTime, 'HH:mm') : format(new Date(), 'HH:mm'));
+
+  const calculateDuration = () => {
+    const now = new Date();
+    const [startH, startM] = startTimeStr.split(':').map(Number);
+    const [endH, endM] = endTimeStr.split(':').map(Number);
+    
+    const start = setMinutes(setHours(now, startH), startM);
+    const end = setMinutes(setHours(now, endH), endM);
+    
+    let diff = differenceInMinutes(end, start);
+    if (diff < 0) diff += 24 * 60; // Handle day crossing roughly
+    return diff;
+  };
 
   const handleSave = () => {
+    let manualDuration = null;
+    if (isManual) {
+        manualDuration = calculateDuration();
+        if (manualDuration <= 0) {
+            alert("结束时间必须晚于开始时间");
+            return;
+        }
+    }
+
     if (isCustom && customLabel.trim()) {
       saveLog({
         id: `custom-${Date.now()}`,
         label: customLabel,
         icon: '✨',
         color: 'bg-slate-100 text-slate-800',
-      });
+      }, manualDuration);
     } else if (selectedCategory) {
-      saveLog(selectedCategory);
+      saveLog(selectedCategory, manualDuration);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-md flex items-center justify-center z-50 fade-in">
-      <div className="bg-[#eef2f6] p-8 rounded-3xl shadow-2xl w-full max-w-md mx-4 scale-in border border-white/50">
+      <div className="bg-[#eef2f6] p-8 rounded-3xl shadow-2xl w-full max-w-md mx-4 scale-in border border-white/50 max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold mb-6 text-slate-800 text-center tracking-tight">
-          记录你的时间
+          {isManual ? '补录时间' : '记录你的时间'}
         </h2>
+
+        {isManual && (
+            <div className="flex items-center justify-center gap-4 mb-6 bg-white/50 p-4 rounded-2xl soft-shadow-in">
+                <div className="flex flex-col">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">开始</label>
+                    <input 
+                        type="time" 
+                        value={startTimeStr}
+                        onChange={(e) => setStartTimeStr(e.target.value)}
+                        className="bg-transparent font-bold text-slate-700 outline-none text-xl"
+                    />
+                </div>
+                <div className="text-slate-300 font-bold">-</div>
+                <div className="flex flex-col text-right">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">结束</label>
+                    <input 
+                        type="time" 
+                        value={endTimeStr}
+                        onChange={(e) => setEndTimeStr(e.target.value)}
+                        className="bg-transparent font-bold text-slate-700 outline-none text-xl text-right"
+                    />
+                </div>
+            </div>
+        )}
         
         <div className="grid grid-cols-3 gap-4 mb-6">
           {DEFAULT_CATEGORIES.map((cat) => (
@@ -264,15 +314,16 @@ const StatsModal = ({ todayStats, exportData, resetData, setShowStats }) => (
 
 const SettingsModal = ({ 
   intervalTime, setIntervalTime, setTimeLeft, setIsRunning, setShowSettings,
-  dayStartHour, setDayStartHour, dayEndHour, setDayEndHour
+  dayStartHour, setDayStartHour, dayEndHour, setDayEndHour,
+  recordInterval, setRecordInterval
 }) => (
   <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50 fade-in">
-    <div className="bg-[#eef2f6] p-8 rounded-3xl shadow-2xl w-full max-w-sm mx-4 scale-in border border-white/50">
-      <h2 className="text-2xl font-bold mb-8 text-slate-900 text-center">专注设置</h2>
+    <div className="bg-[#eef2f6] p-8 rounded-3xl shadow-2xl w-full max-w-sm mx-4 scale-in border border-white/50 overflow-y-auto max-h-[90vh]">
+      <h2 className="text-2xl font-bold mb-8 text-slate-900 text-center">设置</h2>
       
       <div className="mb-8">
         <label className="block text-slate-400 text-xs font-bold mb-4 uppercase tracking-widest text-center">
-          选择时间块长度
+          倒计时/记录提醒间隔
         </label>
         <div className="flex gap-4">
           {[15, 30, 60].map((val) => (
@@ -281,11 +332,12 @@ const SettingsModal = ({
               type="button"
               onClick={() => {
                 setIntervalTime(val);
+                setRecordInterval(val);
                 setTimeLeft(val * 60);
                 setIsRunning(false);
               }}
               className={`flex-1 py-4 rounded-2xl font-bold text-lg transition-all duration-200 ${
-                intervalTime === val
+                (intervalTime === val || recordInterval === val)
                   ? 'soft-shadow-pressed text-sky-600 ring-1 ring-sky-200'
                   : 'soft-shadow-out text-slate-400 hover:transform hover:-translate-y-1'
               }`}
@@ -294,12 +346,16 @@ const SettingsModal = ({
             </button>
           ))}
         </div>
+        <div className="text-center mt-2 text-xs text-slate-400">
+            当前: 专注 {intervalTime}m / 记录提醒 {recordInterval}m
+        </div>
       </div>
 
       <div className="mb-8">
         <label className="block text-slate-400 text-xs font-bold mb-4 uppercase tracking-widest text-center">
           每日作息时间
         </label>
+        {/* ... existing ... */}
         <div className="flex gap-4 items-center justify-center">
            <div className="flex-1">
              <select 
@@ -340,8 +396,11 @@ const SettingsModal = ({
 
 const TimeTracker = () => {
   // --- State ---
-  const [intervalTime, setIntervalTime] = useState(30); // 分钟
+  const [mode, setMode] = useState('focus'); // 'focus' | 'countup' | 'record'
+  const [intervalTime, setIntervalTime] = useState(30); // 分钟 (Focus mode)
+  const [recordInterval, setRecordInterval] = useState(30); // 分钟 (Record mode)
   const [timeLeft, setTimeLeft] = useState(intervalTime * 60);
+  const [countUpTime, setCountUpTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [currentBlockDuration, setCurrentBlockDuration] = useState(intervalTime);
   const [showLogModal, setShowLogModal] = useState(false);
@@ -349,6 +408,19 @@ const TimeTracker = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPressed, setIsPressed] = useState(false); // 按钮按下状态
+
+  // Record Mode State
+  const [manualRecordData, setManualRecordData] = useState(null); // { startTime, endTime }
+  const [lastLogTime, setLastLogTime] = useState(() => {
+      if (typeof localStorage !== 'undefined') {
+          const savedLogs = localStorage.getItem('time_logs');
+          if (savedLogs) {
+              const parsed = JSON.parse(savedLogs);
+              if (parsed.length > 0) return parsed[0].timestamp; // latest log timestamp
+          }
+      }
+      return Date.now();
+  });
   
   // 自定义作息时间
   const [dayStartHour, setDayStartHour] = useState(() => parseInt(localStorage.getItem('dayStartHour') || 9));
@@ -389,16 +461,70 @@ const TimeTracker = () => {
 
   // --- 计时器逻辑 ---
   useEffect(() => {
-    if (isRunning && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && isRunning) {
-      // 时间到
-      handleTimerComplete();
+    if (isRunning) {
+      if (mode === 'focus' && timeLeft > 0) {
+        timerRef.current = setInterval(() => {
+          setTimeLeft((prev) => prev - 1);
+        }, 1000);
+      } else if (mode === 'focus' && timeLeft === 0) {
+        handleTimerComplete();
+      } else if (mode === 'countup') {
+        timerRef.current = setInterval(() => {
+          setCountUpTime((prev) => prev + 1);
+        }, 1000);
+      }
     }
+
     return () => clearInterval(timerRef.current);
-  }, [isRunning, timeLeft]);
+  }, [isRunning, timeLeft, mode]);
+
+  const [reminderAnchor, setReminderAnchor] = useState(null); // Anchor for relative reminder
+
+  // --- 记录模式逻辑 (基于时钟 + 相对偏移) ---
+  useEffect(() => {
+    if (mode === 'record') {
+      const now = new Date();
+      const seconds = now.getSeconds();
+      
+      let shouldRemind = false;
+
+      if (reminderAnchor) {
+          // Relative mode: Check diff from anchor
+          const diffSeconds = Math.floor((now - reminderAnchor) / 1000);
+          const intervalSeconds = recordInterval * 60;
+          // Remind when diff is multiple of interval (and not 0)
+          if (diffSeconds > 0 && diffSeconds % intervalSeconds === 0) {
+              shouldRemind = true;
+          }
+      } else {
+          // Absolute mode: Clock aligned
+          const minutes = now.getMinutes();
+          if (minutes % recordInterval === 0 && seconds === 0) {
+              shouldRemind = true;
+          }
+      }
+      
+      if (shouldRemind) {
+        // 触发弹窗
+         if (typeof window !== 'undefined' && 'Notification' in window) {
+            // eslint-disable-next-line no-new
+            new Notification('时间记录', { body: '现在在做什么？' });
+         }
+         
+         if (!showLogModal) {
+           // 计算距离上次记录的时间
+           const nowTs = Date.now();
+           const diffMinutes = Math.max(1, Math.round((nowTs - lastLogTime) / 60000));
+           
+           setCurrentBlockDuration(diffMinutes);
+           // Pass manual data to imply start time
+           setManualRecordData({ startTime: lastLogTime, endTime: nowTs });
+           setShowLogModal(true);
+         }
+      }
+    }
+  }, [currentTime, mode, recordInterval, lastLogTime, showLogModal, reminderAnchor]); // 依赖 currentTime 每秒触发
+
 
   // --- 功能函数 ---
   const handleTimerComplete = () => {
@@ -421,25 +547,48 @@ const TimeTracker = () => {
   };
 
   const handleManualEnd = () => {
-    if (!isRunning) return;
-
+    // Countup allows ending even if paused, Focus requires running for manual end usually? 
+    // Actually existing logic said if (!isRunning) return; for focus.
+    // Let's allow ending anytime if there is data.
+    
     clearInterval(timerRef.current);
     setIsRunning(false);
 
-    const totalSeconds = intervalTime * 60;
-    const elapsedSeconds = totalSeconds - timeLeft;
-    // 四舍五入到分钟，至少记 1 分钟
-    const elapsedMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
+    let duration = 0;
+    if (mode === 'focus') {
+        const totalSeconds = intervalTime * 60;
+        const elapsedSeconds = totalSeconds - timeLeft;
+        duration = Math.max(1, Math.round(elapsedSeconds / 60));
+    } else if (mode === 'countup') {
+        duration = Math.max(1, Math.round(countUpTime / 60));
+    } else {
+        duration = recordInterval;
+    }
 
-    setCurrentBlockDuration(elapsedMinutes);
+    setCurrentBlockDuration(duration);
     setShowLogModal(true);
   };
 
-  const saveLog = (category) => {
+  const handleManualAdd = () => {
+     setManualRecordData({
+         startTime: lastLogTime, // 默认从上次结束开始
+         endTime: Date.now(),
+         isManual: true // Explicitly manual mode
+     });
+     setShowLogModal(true);
+  };
+
+  const saveLog = (category, manualDuration = null) => {
+    // Determine duration
+    let finalDuration = currentBlockDuration;
+    if (manualDuration !== null) {
+        finalDuration = manualDuration;
+    }
+
     const newLog = {
       id: Date.now(),
       timestamp: Date.now(),
-      duration: currentBlockDuration,
+      duration: finalDuration,
       categoryId: category.id,
       categoryLabel: category.label || category.categoryLabel, // 兼容自定义
       note,
@@ -449,11 +598,21 @@ const TimeTracker = () => {
     setLogs(updatedLogs);
     localStorage.setItem('time_logs', JSON.stringify(updatedLogs));
 
+    // Update Last Log Time to now
+    setLastLogTime(Date.now());
+
     // 重置状态
     setNote('');
     setShowLogModal(false);
-    setTimeLeft(intervalTime * 60);
-    setCurrentBlockDuration(intervalTime);
+    setManualRecordData(null);
+    
+    if (mode === 'focus') {
+        setTimeLeft(intervalTime * 60);
+        setCurrentBlockDuration(intervalTime);
+    } else if (mode === 'countup') {
+        setCountUpTime(0);
+        setCurrentBlockDuration(0);
+    }
   };
 
   const exportData = () => {
@@ -525,7 +684,7 @@ const TimeTracker = () => {
   const dayProgress = calculateDayProgress();
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden selection:bg-sky-100">
+    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden selection:bg-transparent cursor-default select-none">
       {/* 顶部栏 */}
       <div className="absolute top-0 w-full p-8 flex justify-between items-center max-w-2xl z-20">
         <div className="font-bold text-2xl text-slate-800 tracking-tighter">TimeChunk</div>
@@ -547,59 +706,213 @@ const TimeTracker = () => {
         </div>
       </div>
 
-      {/* 主倒计时区 */}
-      <div className="text-center relative z-10 mt-[-20px]">
-        <div className="mb-16 relative inline-block">
-          <RingProgress radius={180} stroke={12} progress={isRunning ? 100 - progress : 0}>
-            <div className="text-center transform translate-y-[5%]">
-              {/* 浮雕文字效果 */}
-              <div
-                className={`text-8xl font-bold tabular-nums tracking-tighter transition-colors duration-300 drop-shadow-sm ${
-                  isRunning ? 'text-slate-800' : 'text-slate-300'
-                }`}
-                style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.05), -1px -1px 1px rgba(255,255,255,0.9)' }}
-              >
-                {formatTime(timeLeft)}
-              </div>
-              <div className="text-slate-400 font-bold mt-6 uppercase tracking-[0.2em] text-xs">
-                {isRunning ? '专注中' : '准备就绪'}
-              </div>
-            </div>
-          </RingProgress>
-        </div>
-
-        <div className="flex flex-col items-center gap-6">
+      {/* Mode Switcher */}
+      <div className="relative z-20 mt-36 mb-8 bg-white/50 p-1 rounded-2xl flex soft-shadow-in mx-auto max-w-xs w-full">
+        {[
+          { id: 'focus', label: '专注', icon: <Timer size={16} /> },
+          { id: 'countup', label: '正计时', icon: <Play size={16} /> },
+          { id: 'record', label: '记录', icon: <ClipboardList size={16} /> },
+        ].map((m) => (
           <button
-            type="button"
-            onMouseDown={() => setIsPressed(true)}
-            onMouseUp={() => setIsPressed(false)}
-            onMouseLeave={() => setIsPressed(false)}
-            onClick={handleStartStop}
-            className={`rounded-full p-10 transition-all duration-200 flex items-center justify-center transform ${
-              isPressed ? 'soft-shadow-pressed scale-95' : 'soft-shadow-out hover:scale-105'
-            } ${isRunning ? 'text-sky-500' : 'text-slate-400'}`}
+            key={m.id}
+            onClick={() => {
+                setMode(m.id);
+                setIsRunning(false);
+            }}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+              mode === m.id
+                ? 'bg-white soft-shadow-out text-sky-500 shadow-sm'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
           >
-            {isRunning ? (
-              <Pause size={40} fill="currentColor" />
-            ) : (
-              <Play size={40} fill="currentColor" className="ml-2" />
-            )}
+            {m.icon}
+            {m.label}
           </button>
+        ))}
+      </div>
 
-          <div className="h-8">
-            {isRunning ? (
+      {/* Main Content Area */}
+      <div className="text-center relative z-10 flex-1 flex flex-col items-center w-full max-w-md pt-12">
+        
+        {/* Focus Mode */}
+        {mode === 'focus' && (
+          <div className="flex flex-col items-center w-full h-full">
+            <div className="mb-10 relative inline-block">
+              <RingProgress radius={160} stroke={12} progress={isRunning ? 100 - progress : 0}>
+                 <div className="text-center transform translate-y-[5%]">
+                  <div className="text-7xl font-bold tabular-nums tracking-tighter text-slate-800" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.05), -1px -1px 1px rgba(255,255,255,0.9)' }}>
+                    {formatTime(timeLeft)}
+                  </div>
+                  <div className="text-slate-400 font-bold mt-4 uppercase tracking-[0.2em] text-xs">
+                    {isRunning ? '专注中' : '准备就绪'}
+                  </div>
+                </div>
+              </RingProgress>
+            </div>
+            {/* Controls */}
+            <div className="flex flex-col items-center gap-6 mt-auto mb-20">
               <button
                 type="button"
-                onClick={handleManualEnd}
-                className="text-xs font-bold text-slate-400 hover:text-red-500 tracking-widest transition-colors px-6 py-2 rounded-full hover:bg-red-50"
+                onMouseDown={() => setIsPressed(true)}
+                onMouseUp={() => setIsPressed(false)}
+                onMouseLeave={() => setIsPressed(false)}
+                onClick={handleStartStop}
+                className={`rounded-full p-8 transition-all duration-200 flex items-center justify-center transform ${
+                  isPressed ? 'soft-shadow-pressed scale-95' : 'soft-shadow-out hover:scale-105'
+                } ${isRunning ? 'text-sky-500' : 'text-slate-400'}`}
               >
-                提前结束并记录
+                {isRunning ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-1" />}
               </button>
-            ) : (
-              <p className="text-slate-300 text-xs font-bold tracking-widest uppercase">点击开始专注</p>
-            )}
+               <div className="h-8">
+                {isRunning ? (
+                  <button onClick={handleManualEnd} className="text-xs font-bold text-slate-400 hover:text-red-500 tracking-widest transition-colors px-6 py-2 rounded-full hover:bg-red-50">
+                    提前结束并记录
+                  </button>
+                ) : <p className="text-slate-300 text-xs font-bold tracking-widest uppercase">点击开始专注</p>}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Count Up Mode */}
+        {mode === 'countup' && (
+           <div className="flex flex-col items-center w-full h-full">
+            <div className="mb-10 relative inline-block">
+              <RingProgress radius={160} stroke={12} progress={isRunning ? (countUpTime % 3600) / 36 : 0}>
+                 <div className="text-center transform translate-y-[5%]">
+                  <div className="text-7xl font-bold tabular-nums tracking-tighter text-slate-800" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.05), -1px -1px 1px rgba(255,255,255,0.9)' }}>
+                    {formatTime(countUpTime)}
+                  </div>
+                  <div className="text-slate-400 font-bold mt-4 uppercase tracking-[0.2em] text-xs">
+                    {isRunning ? '记录中' : '正计时'}
+                  </div>
+                </div>
+              </RingProgress>
+            </div>
+             <div className="flex flex-col items-center gap-6 mt-auto mb-20">
+              <button
+                type="button"
+                onMouseDown={() => setIsPressed(true)}
+                onMouseUp={() => setIsPressed(false)}
+                onMouseLeave={() => setIsPressed(false)}
+                onClick={handleStartStop}
+                className={`rounded-full p-8 transition-all duration-200 flex items-center justify-center transform ${
+                  isPressed ? 'soft-shadow-pressed scale-95' : 'soft-shadow-out hover:scale-105'
+                } ${isRunning ? 'text-sky-500' : 'text-slate-400'}`}
+              >
+                {isRunning ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-1" />}
+              </button>
+               <div className="h-8">
+                   <button onClick={handleManualEnd} className="text-xs font-bold text-slate-400 hover:text-sky-500 tracking-widest transition-colors px-6 py-2 rounded-full hover:bg-sky-50">
+                    完成并保存
+                  </button>
+              </div>
+            </div>
+           </div>
+        )}
+
+        {/* Record Mode */}
+        {mode === 'record' && (
+           <div className="flex flex-col items-center w-full h-full px-6 gap-8">
+             {/* Card */}
+             <div className="bg-white/50 p-6 rounded-[2.5rem] soft-shadow-out w-full max-w-xs mx-auto mt-12 mb-auto backdrop-blur-sm border border-white/60 relative overflow-hidden">
+                
+                <div className="absolute top-0 left-0 w-full h-1 bg-slate-200">
+                    <div 
+                        className="h-full bg-sky-400 transition-all duration-1000"
+                        style={{ 
+                            width: `${(() => {
+                                const totalSeconds = recordInterval * 60;
+                                let elapsed = 0;
+                                if (reminderAnchor) {
+                                    const diff = Math.floor((currentTime - reminderAnchor) / 1000);
+                                    elapsed = diff % totalSeconds;
+                                } else {
+                                    elapsed = (currentTime.getMinutes() % recordInterval) * 60 + currentTime.getSeconds();
+                                }
+                                return ((totalSeconds - elapsed) / totalSeconds) * 100;
+                            })()}%` 
+                        }}
+                    ></div>
+                </div>
+
+                <div className="text-center mt-4 mb-8">
+                    <div className="text-6xl font-bold tabular-nums tracking-tighter text-slate-800">
+                        {format(currentTime, 'HH:mm')}
+                    </div>
+                    <div className="flex items-center justify-center gap-2 mt-2 w-full">
+                        <button 
+                            onClick={() => setShowSettings(true)}
+                            className="flex items-center justify-center gap-2 text-slate-400 bg-slate-100/50 hover:bg-white hover:text-sky-500 transition-colors rounded-full py-1 px-3 cursor-pointer"
+                        >
+                            <Bell size={12} className="animate-pulse" />
+                            <span className="text-xs font-bold tabular-nums tracking-wide">
+                                {(() => {
+                                    const totalSeconds = recordInterval * 60-1;
+                                    let remaining = 0;
+                                    if (reminderAnchor) {
+                                        const diff = Math.floor((currentTime - reminderAnchor) / 1000);
+                                        const elapsed = diff % totalSeconds;
+                                        remaining = totalSeconds - elapsed;
+                                    } else {
+                                        const elapsed = (currentTime.getMinutes() % recordInterval) * 60 + currentTime.getSeconds();
+                                        remaining = totalSeconds - elapsed;
+                                    }
+                                    return formatTime(remaining);
+                                })()} 后提醒
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                setReminderAnchor(new Date());
+                            }}
+                            className="p-1.5 rounded-full text-slate-400 hover:text-sky-500 hover:bg-white transition-all cursor-pointer"
+                            title="重置倒计时"
+                        >
+                            <RotateCcw size={12} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-200/50 pt-6">
+                   <div className="flex flex-col items-center">
+                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">上次记录</div>
+                       <div className="font-bold text-slate-600 text-lg">{format(lastLogTime, 'HH:mm')}</div>
+                   </div>
+                   <div className="flex flex-col items-center border-l border-slate-200/50">
+                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">未记录</div>
+                       <div className="font-bold text-sky-500 text-lg tabular-nums">
+                           {Math.max(0, Math.floor((currentTime - lastLogTime) / 60000))}m
+                       </div>
+                   </div>
+                </div>
+             </div>
+
+             <div className="flex flex-col gap-4 w-full max-w-[240px] mt-auto mb-20">
+                <button 
+                  onClick={() => {
+                       const diff = Math.max(1, Math.round((Date.now() - lastLogTime) / 60000));
+                       setCurrentBlockDuration(diff);
+                       setManualRecordData({ startTime: lastLogTime, endTime: Date.now(), isManual: true });
+                       setShowLogModal(true);
+                  }}
+                  className="w-full py-3 rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white font-bold shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm tracking-wide"
+                >
+                    <ClipboardList size={18} />
+                    <span>记录这段时间</span>
+                </button>
+                
+                <button 
+                  onClick={handleManualAdd}
+                  className="w-full py-2 rounded-xl text-slate-400 font-bold hover:text-sky-600 hover:bg-white/50 transition-all flex items-center justify-center gap-2 text-[10px] tracking-widest uppercase"
+                >
+                    <Plus size={14} />
+                    <span>手动补录</span>
+                </button>
+             </div>
+           </div>
+        )}
+
       </div>
 
       {/* 底部栏：时间和进度 */}
@@ -634,6 +947,9 @@ const TimeTracker = () => {
           setNote={setNote}
           saveLog={saveLog}
           setShowLogModal={setShowLogModal}
+          initialStartTime={manualRecordData?.startTime}
+          initialEndTime={manualRecordData?.endTime}
+          isManual={manualRecordData?.isManual}
         />
       )}
       {showStats && (
@@ -655,6 +971,8 @@ const TimeTracker = () => {
           setDayStartHour={setDayStartHour}
           dayEndHour={dayEndHour}
           setDayEndHour={setDayEndHour}
+          recordInterval={recordInterval}
+          setRecordInterval={setRecordInterval}
         />
       )}
     </div>
