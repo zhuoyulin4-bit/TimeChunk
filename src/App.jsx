@@ -67,10 +67,11 @@ const RingProgress = ({ radius, stroke, progress, children }) => {
   );
 };
 
-const LogModal = ({ note, setNote, saveLog, setShowLogModal, initialStartTime, initialEndTime, isManual }) => {
+const LogModal = ({ note, setNote, saveLog, setShowLogModal, initialStartTime, initialEndTime, isManual, duration }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [customLabel, setCustomLabel] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+  const [isTimeEditing, setIsTimeEditing] = useState(false);
   
   // Manual Time Entry State
   const [startTimeStr, setStartTimeStr] = useState(initialStartTime ? format(initialStartTime, 'HH:mm') : format(new Date(), 'HH:mm'));
@@ -114,31 +115,85 @@ const LogModal = ({ note, setNote, saveLog, setShowLogModal, initialStartTime, i
   return (
     <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-md flex items-center justify-center z-50 fade-in">
       <div className="bg-[#eef2f6] p-8 rounded-3xl shadow-2xl w-full max-w-md mx-4 scale-in border border-white/50 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-bold mb-6 text-slate-800 text-center tracking-tight">
+        <h2 className="text-2xl font-bold mb-2 text-slate-800 text-center tracking-tight">
           {isManual ? '补录时间' : '记录你的时间'}
         </h2>
+        
+        {/* Case 2: Record This Period (Read-only Range) - for Auto-Record in Record Mode */}
+        {!isManual && initialStartTime && initialEndTime && (
+           <div className="text-center mb-6">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">记录时间段</div>
+              <div className="text-2xl font-bold text-slate-700 flex items-center justify-center gap-2">
+                 <span>{format(initialStartTime, 'HH:mm')}</span>
+                 <span className="text-slate-300">-</span>
+                 <span>{format(initialEndTime, 'HH:mm')}</span>
+                 <span className="text-sm font-medium text-sky-500 bg-sky-50 px-2 py-0.5 rounded-md ml-1">
+                    {duration}m
+                 </span>
+              </div>
+           </div>
+        )}
 
+        {/* Case 3: Focus/CountUp (Duration only) */}
+        {!isManual && (!initialStartTime || !initialEndTime) && duration > 0 && (
+            <div className="text-center text-slate-500 font-medium mb-6">
+                你已经专注了 <span className="text-sky-500 font-bold text-lg">{duration}</span> 分钟
+            </div>
+        )}
+        
+        {/* Case 1: Supplementary (Editable) */}
         {isManual && (
-            <div className="flex items-center justify-center gap-4 mb-6 bg-white/50 p-4 rounded-2xl soft-shadow-in">
-                <div className="flex flex-col">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">开始</label>
-                    <input 
-                        type="time" 
-                        value={startTimeStr}
-                        onChange={(e) => setStartTimeStr(e.target.value)}
-                        className="bg-transparent font-bold text-slate-700 outline-none text-xl"
-                    />
-                </div>
-                <div className="text-slate-300 font-bold">-</div>
-                <div className="flex flex-col text-right">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">结束</label>
-                    <input 
-                        type="time" 
-                        value={endTimeStr}
-                        onChange={(e) => setEndTimeStr(e.target.value)}
-                        className="bg-transparent font-bold text-slate-700 outline-none text-xl text-right"
-                    />
-                </div>
+            <div className="mb-6 mt-4 text-center">
+                {!isTimeEditing ? (
+                    <div className="animate-fadeIn">
+                        <div className="text-3xl font-bold text-slate-700 flex items-center justify-center gap-3 mb-2 tracking-tight">
+                            <span>{startTimeStr}</span>
+                            <span className="text-slate-300 font-light text-2xl">→</span>
+                            <span>{endTimeStr}</span>
+                        </div>
+                        <div className="text-sm font-medium text-slate-400 mb-5">
+                            共 <span className="text-sky-500 font-bold tabular-nums text-base">{calculateDuration()}</span> 分钟
+                        </div>
+                        <button 
+                            type="button"
+                            onClick={() => setIsTimeEditing(true)}
+                            className="text-xs font-bold text-slate-400 hover:text-sky-600 bg-slate-100/50 hover:bg-white border border-transparent hover:border-slate-200 px-4 py-2 rounded-full transition-all"
+                        >
+                            修改时间
+                        </button>
+                    </div>
+                ) : (
+                    <div className="animate-fadeIn bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                            <div className="flex flex-col items-center">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">开始</label>
+                                <input 
+                                    type="time" 
+                                    value={startTimeStr}
+                                    onChange={(e) => setStartTimeStr(e.target.value)}
+                                    className="bg-white border border-slate-200 rounded-xl px-2 py-2 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-sky-200 text-lg text-center w-28 shadow-sm"
+                                />
+                            </div>
+                            <div className="text-slate-300 font-bold pt-5">-</div>
+                            <div className="flex flex-col items-center">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">结束</label>
+                                <input 
+                                    type="time" 
+                                    value={endTimeStr}
+                                    onChange={(e) => setEndTimeStr(e.target.value)}
+                                    className="bg-white border border-slate-200 rounded-xl px-2 py-2 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-sky-200 text-lg text-center w-28 shadow-sm"
+                                />
+                            </div>
+                        </div>
+                        <button 
+                            type="button"
+                            onClick={() => setIsTimeEditing(false)}
+                            className="text-xs font-bold text-white bg-sky-500 hover:bg-sky-600 px-6 py-2 rounded-full transition-all shadow-lg shadow-sky-500/30"
+                        >
+                            完成
+                        </button>
+                    </div>
+                )}
             </div>
         )}
         
@@ -205,7 +260,29 @@ const LogModal = ({ note, setNote, saveLog, setShowLogModal, initialStartTime, i
         <div className="flex gap-4">
           <button
             type="button"
-            onClick={() => setShowLogModal(false)}
+            onClick={() => {
+                // Clear state properly
+                setShowLogModal(false);
+                // We should technically clear manual state here too if needed, 
+                // but setManualRecordData(null) is usually called before opening.
+                // However, if we cancel a manual record, we might want to ensure it's cleared.
+                // The parent doesn't pass a 'onClose' handler that does this logic.
+                // But saveLog does it. 
+                // Let's modify App.jsx to pass a proper close handler or just force reload? No.
+                // The issue described by user was "All windows are same".
+                // This is likely because manualRecordData persists if not cleared.
+                // We need to clear it on cancel.
+                // Since we don't have the setter here, we rely on parent logic or...
+                // Wait, we can just refresh? No.
+                // The cleanest way is to lift the close logic.
+                // But since I can't easily change the prop signature in one go without changing App usage...
+                // Actually I can.
+                // For now, I'll just call setShowLogModal(false).
+                // But wait, I need to fix the bug!
+                // The bug is manualRecordData persisting.
+                // I will add `onClose` prop to LogModal and use it.
+                setShowLogModal(false);
+            }}
             className="flex-1 py-4 text-slate-500 hover:text-slate-700 font-bold rounded-xl transition-colors soft-shadow-out active:soft-shadow-pressed"
           >
             放弃
@@ -517,14 +594,20 @@ const TimeTracker = () => {
            const diffMinutes = Math.max(1, Math.round((nowTs - lastLogTime) / 60000));
            
            setCurrentBlockDuration(diffMinutes);
-           // Pass manual data to imply start time
-           setManualRecordData({ startTime: lastLogTime, endTime: nowTs });
+           // Pass manual data to imply start time but NOT manual mode (read-only range)
+           setManualRecordData({ startTime: lastLogTime, endTime: nowTs, isManual: false });
            setShowLogModal(true);
          }
       }
     }
   }, [currentTime, mode, recordInterval, lastLogTime, showLogModal, reminderAnchor]); // 依赖 currentTime 每秒触发
 
+
+  const handleCloseModal = () => {
+      setShowLogModal(false);
+      setManualRecordData(null);
+      setNote('');
+  };
 
   // --- 功能函数 ---
   const handleTimerComplete = () => {
@@ -539,6 +622,7 @@ const TimeTracker = () => {
       new Notification('时间到！', { body: '该记录一下刚才的工作了。' });
     }
 
+    setManualRecordData(null); // Clear any manual data
     setShowLogModal(true);
   };
 
@@ -566,6 +650,7 @@ const TimeTracker = () => {
     }
 
     setCurrentBlockDuration(duration);
+    setManualRecordData(null); // Clear any manual data
     setShowLogModal(true);
   };
 
@@ -815,7 +900,7 @@ const TimeTracker = () => {
         {mode === 'record' && (
            <div className="flex flex-col items-center w-full h-full px-6 gap-8">
              {/* Card */}
-             <div className="bg-white/50 p-6 rounded-[2.5rem] soft-shadow-out w-full max-w-xs mx-auto mt-6 mb-auto backdrop-blur-sm border border-white/60 relative overflow-hidden">
+             <div className="bg-white/50 p-6 rounded-[2.5rem] soft-shadow-out w-full max-w-xs mx-auto mt-12 mb-auto backdrop-blur-sm border border-white/60 relative overflow-hidden">
                 
                 <div className="absolute top-0 left-0 w-full h-1 bg-slate-200">
                     <div 
@@ -893,7 +978,8 @@ const TimeTracker = () => {
                   onClick={() => {
                        const diff = Math.max(1, Math.round((Date.now() - lastLogTime) / 60000));
                        setCurrentBlockDuration(diff);
-                       setManualRecordData({ startTime: lastLogTime, endTime: Date.now(), isManual: true });
+                       // Record this period: isManual = false (show read-only range)
+                       setManualRecordData({ startTime: lastLogTime, endTime: Date.now(), isManual: false });
                        setShowLogModal(true);
                   }}
                   className="w-full py-3 rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white font-bold shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm tracking-wide"
@@ -946,10 +1032,11 @@ const TimeTracker = () => {
           note={note}
           setNote={setNote}
           saveLog={saveLog}
-          setShowLogModal={setShowLogModal}
+          setShowLogModal={handleCloseModal}
           initialStartTime={manualRecordData?.startTime}
           initialEndTime={manualRecordData?.endTime}
           isManual={manualRecordData?.isManual}
+          duration={currentBlockDuration}
         />
       )}
       {showStats && (
