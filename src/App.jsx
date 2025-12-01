@@ -900,7 +900,7 @@ const TimeTracker = () => {
         {mode === 'record' && (
            <div className="flex flex-col items-center w-full h-full px-6 gap-8">
              {/* Card */}
-             <div className="bg-white/50 p-6 rounded-[2.5rem] soft-shadow-out w-full max-w-xs mx-auto mt-12 mb-auto backdrop-blur-sm border border-white/60 relative overflow-hidden">
+             <div className="bg-white/50 p-6 rounded-[2.5rem] soft-shadow-out w-full max-w-xs mx-auto mt-4 mb-auto backdrop-blur-sm border border-white/60 relative overflow-hidden">
                 
                 <div className="absolute top-0 left-0 w-full h-1 bg-slate-200">
                     <div 
